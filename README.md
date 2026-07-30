@@ -1,6 +1,6 @@
 # CAD Files Repository
 
-This repository serves as a centralized portfolio and archive for my hardware designs, mechanical assemblies, and engineering projects created in Autodesk Fusion 360. 
+A centralized portfolio and archive for my hardware designs, mechanical assemblies, and engineering projects created in Autodesk Fusion 360. 
 
 ## 🚀 About This Repository
 As an electrical and electronics engineering student with ambitions of building advanced systems and hardware infrastructure, this repository tracks my journey in mechanical design, robotics component creation, and rapid prototyping. 
