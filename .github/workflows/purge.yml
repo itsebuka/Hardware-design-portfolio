@@ -1,0 +1,121 @@
+name: 🐦 X-Purger — Archive ID Extractor
+
+on:
+  # Manual trigger with inputs
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD) — leave empty for no limit"
+        required: false
+        default: ""
+      end_date:
+        description: "End date (YYYY-MM-DD) — leave empty for no limit"
+        required: false
+        default: ""
+      purge_type:
+        description: "Type to extract"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - tweets
+          - replies
+          - reposts
+          - likes
+      min_likes:
+        description: "Skip posts with >= N likes (0 = delete all)"
+        required: false
+        default: "0"
+      keyword:
+        description: "Only include posts containing this keyword (optional)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry run — parse and show stats only, no deletions"
+        required: false
+        default: "true"
+        type: boolean
+
+jobs:
+  parse-archive:
+    name: Parse Twitter Archive & Extract IDs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 📦 Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── Upload your tweet.js / archive.zip as an artifact named "twitter-archive" ──
+      # or place it in the repo (NEVER commit sensitive data — use GitHub Secrets or upload below)
+      - name: 📥 Download twitter archive artifact (if uploaded)
+        uses: actions/download-artifact@v4
+        with:
+          name: twitter-archive
+          path: ./archive-input/
+        continue-on-error: true  # Gracefully skip if no artifact uploaded
+
+      - name: 🔍 Run Archive Parser
+        env:
+          START_DATE: ${{ github.event.inputs.start_date }}
+          END_DATE: ${{ github.event.inputs.end_date }}
+          PURGE_TYPE: ${{ github.event.inputs.purge_type }}
+          MIN_LIKES: ${{ github.event.inputs.min_likes }}
+          KEYWORD: ${{ github.event.inputs.keyword }}
+        run: |
+          # Determine archive path (look for uploaded file or fallback to repo root)
+          ARCHIVE="tweet.js"
+          if [ -f "./archive-input/tweet.js" ]; then
+            ARCHIVE="./archive-input/tweet.js"
+          elif [ -f "./archive-input/archive.zip" ]; then
+            ARCHIVE="./archive-input/archive.zip"
+          fi
+
+          echo "📂 Using archive: $ARCHIVE"
+          echo "📅 Date range: ${START_DATE:-no limit} → ${END_DATE:-no limit}"
+          echo "🔖 Type: $PURGE_TYPE"
+
+          # Build command
+          CMD="python scripts/python-archive-parser.py --archive \"$ARCHIVE\" --type \"$PURGE_TYPE\" --stats"
+
+          if [ -n "$START_DATE" ]; then
+            CMD="$CMD --start-date \"$START_DATE\""
+          fi
+          if [ -n "$END_DATE" ]; then
+            CMD="$CMD --end-date \"$END_DATE\""
+          fi
+          if [ -n "$KEYWORD" ]; then
+            CMD="$CMD --keyword \"$KEYWORD\""
+          fi
+          if [ "$MIN_LIKES" != "0" ]; then
+            CMD="$CMD --min-likes \"$MIN_LIKES\""
+          fi
+
+          eval $CMD
+
+      - name: 📤 Upload extracted IDs as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: filtered-tweet-ids
+          path: filtered_ids.txt
+          retention-days: 7
+        if: always()
+
+      - name: 📊 Print DRY RUN notice
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "🔍 DRY RUN MODE — No tweets were deleted."
+          echo "   Download the 'filtered-tweet-ids' artifact"
+          echo "   to review which IDs would be purged."
+          echo "   Re-run with dry_run=false to proceed."
+          echo "=========================================="
