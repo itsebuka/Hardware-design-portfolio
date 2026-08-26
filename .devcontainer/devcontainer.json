@@ -1,0 +1,22 @@
+{
+  "name": "X-Purger Tool",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "postCreateCommand": "pip install -r requirements.txt",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "forwardPorts": [],
+  "remoteEnv": {
+    "PYTHONUNBUFFERED": "1"
+  },
+  "postStartCommand": "echo '\\n🐦 X-Purger Tool is ready!\\n\\nQuick Start:\\n  python scripts/python-archive-parser.py --help\\n  python scripts/python-archive-parser.py --archive tweet.js --start-date 2024-01-01 --stats\\n\\n📖 See README.md for full instructions.\\n'"
+}
