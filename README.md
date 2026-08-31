@@ -13,6 +13,8 @@
 | `delete-replies.js` | Your replies to others | Browser Console |
 | `delete-reposts.js` | Your retweets/reposts | Browser Console |
 | `unlike-tweets.js` | Posts you have liked | Browser Console |
+| `delete-by-date-and-likes.js` | Tweets & replies in a date range with < N likes | Browser Console |
+| `clear-bookmarks.js` | All your saved bookmarks | Browser Console |
 | `python-archive-parser.py` | Extracts IDs from your archive | Terminal / Codespaces / Actions |
 
 ---
@@ -28,6 +30,8 @@
 
    | Goal | Go to |
    |------|-------|
+   | Delete by date range + likes filter | `https://x.com/YOUR_USERNAME/with_replies` |
+   | Clear all bookmarks | `https://x.com/i/bookmarks` |
    | Delete tweets | `https://x.com/YOUR_USERNAME` |
    | Delete replies | `https://x.com/YOUR_USERNAME/with_replies` |
    | Undo reposts | `https://x.com/YOUR_USERNAME` |
