@@ -1,0 +1,141 @@
+name: 🗑️ X-Purger — Automated Server-Side Purge
+
+on:
+  # ── Run every 30 minutes automatically ──────────────────────────────────────
+  schedule:
+    - cron: "*/30 * * * *"   # Every 30 minutes, 24/7 until all posts in range are gone
+
+  # ── Also allow manual one-off trigger from the Actions tab ──────────────────
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "Start date (YYYY-MM-DD)"
+        required: false
+        default: "2025-11-01"
+      end_date:
+        description: "End date (YYYY-MM-DD)"
+        required: false
+        default: "2026-02-28"
+      min_likes:
+        description: "Keep posts with >= N likes (0 = delete everything in range)"
+        required: false
+        default: "2"
+      max_deletions:
+        description: "Max deletions per run (to stay within rate limits)"
+        required: false
+        default: "400"
+      dry_run:
+        description: "Dry run — preview only, no deletions"
+        required: false
+        default: "false"
+        type: boolean
+      purge_mode:
+        description: "What to purge"
+        required: false
+        default: "both"
+        type: choice
+        options:
+          - both
+          - tweets-only
+          - bookmarks-only
+
+# Prevent multiple runs from stepping on each other
+concurrency:
+  group: x-purger
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    name: Run X-Purger
+    runs-on: ubuntu-latest
+
+    # ── IMPORTANT: Set these secrets in your repo Settings → Secrets ──────────
+    # X_AUTH_TOKEN : Your auth_token cookie from x.com
+    # X_CT0        : Your ct0 cookie from x.com
+    # See README.md for how to get these values.
+    env:
+      X_AUTH_TOKEN: ${{ secrets.X_AUTH_TOKEN }}
+      X_CT0:        ${{ secrets.X_CT0 }}
+
+      # Use workflow_dispatch inputs if available, otherwise use defaults
+      START_DATE:    ${{ github.event.inputs.start_date    || '2025-11-01' }}
+      END_DATE:      ${{ github.event.inputs.end_date      || '2026-02-28' }}
+      MIN_LIKES:     ${{ github.event.inputs.min_likes     || '2' }}
+      MAX_DELETIONS: ${{ github.event.inputs.max_deletions || '400' }}
+      DRY_RUN:       ${{ github.event.inputs.dry_run       || 'false' }}
+
+    steps:
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🐍 Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: 📦 Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: 🔐 Validate secrets are set
+        run: |
+          if [ -z "$X_AUTH_TOKEN" ] || [ -z "$X_CT0" ]; then
+            echo "❌ ERROR: X_AUTH_TOKEN and X_CT0 secrets are not set!"
+            echo ""
+            echo "To set them:"
+            echo "  1. Go to your repo → Settings → Secrets and variables → Actions"
+            echo "  2. Add: X_AUTH_TOKEN  (your auth_token cookie from x.com)"
+            echo "  3. Add: X_CT0        (your ct0 cookie from x.com)"
+            echo ""
+            echo "See README.md → How to get auth_token and ct0"
+            exit 1
+          fi
+          echo "✅ Secrets are configured."
+
+      - name: 📥 Restore checkpoint (for resuming across runs)
+        uses: actions/cache@v4
+        with:
+          path: purger_checkpoint.json
+          key: purger-checkpoint-${{ github.run_number }}
+          restore-keys: |
+            purger-checkpoint-
+
+      - name: 🗑️ Run purge
+        run: |
+          MODE="${{ github.event.inputs.purge_mode || 'both' }}"
+
+          if [ "$MODE" = "tweets-only" ]; then
+            python purge_runner.py --tweets-only
+          elif [ "$MODE" = "bookmarks-only" ]; then
+            python purge_runner.py --bookmarks-only
+          elif [ "$DRY_RUN" = "true" ]; then
+            python purge_runner.py --dry-run
+          else
+            python purge_runner.py
+          fi
+
+      - name: 💾 Save checkpoint (carries progress to next run)
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: purger_checkpoint.json
+          key: purger-checkpoint-${{ github.run_number }}
+
+      - name: 📊 Upload run log as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: purge-log-${{ github.run_number }}
+          path: purger_checkpoint.json
+          retention-days: 7
+
+      - name: 📋 Print run summary
+        if: always()
+        run: |
+          echo ""
+          echo "=================================================="
+          echo "  Run #${{ github.run_number }} complete"
+          echo "  Scheduled runs continue every 30 minutes."
+          echo "  To STOP the purge: disable the workflow in"
+          echo "  Actions → X-Purger → ... → Disable workflow"
+          echo "=================================================="
