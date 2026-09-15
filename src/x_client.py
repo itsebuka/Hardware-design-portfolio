@@ -32,6 +32,13 @@ QUERY_IDS = {
 BASE_URL   = "https://x.com"
 API_URL    = "https://x.com/i/api/graphql"
 
+# X's own web app bearer token — required for all internal API calls.
+# This is a public, hardcoded token embedded in X's JS bundle.
+BEARER_TOKEN = (
+    "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D"
+    "1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
+)
+
 # Standard features blob required by X's GraphQL (fairly stable)
 TWEET_FEATURES = {
     "rweb_lists_timeline_redesign_enabled": True,
@@ -63,19 +70,21 @@ class XClient:
     def __init__(self, auth_token: str, ct0: str):
         self.session = requests.Session()
         self.session.headers.update({
+            "Authorization": f"Bearer {BEARER_TOKEN}",
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
+                "Chrome/127.0.0.0 Safari/537.36"
             ),
             "Accept":          "*/*",
             "Accept-Language": "en-US,en;q=0.9",
             "Content-Type":    "application/json",
             "Referer":         "https://x.com/",
             "Origin":          "https://x.com",
-            "x-twitter-active-user":   "yes",
+            "x-twitter-active-user":     "yes",
+            "x-twitter-auth-type":       "OAuth2Session",
             "x-twitter-client-language": "en",
-            "x-csrf-token":    ct0,
+            "x-csrf-token":              ct0,
         })
         self.session.cookies.set("auth_token", auth_token, domain=".x.com")
         self.session.cookies.set("ct0",        ct0,        domain=".x.com")
@@ -85,19 +94,43 @@ class XClient:
     # ── Auth & Identity ──────────────────────────────────────────────────────
 
     def get_me(self) -> dict:
-        """Fetch the authenticated user's profile to validate credentials."""
-        url = f"{BASE_URL}/i/api/1.1/account/verify_credentials.json"
-        resp = self._get(url, params={"include_email": "false"})
+        """Fetch the authenticated user's profile via GraphQL to validate credentials."""
+        import json
+        qid = "NimuplG1OB7Fd2btCLdBOw"
+        url = f"{API_URL}/{qid}/Viewer"
+        variables = {"withCommunitiesMemberships": True}
+        features  = {"rweb_tipjar_consumption_enabled": True,
+                     "responsive_web_graphql_exclude_directive_enabled": True,
+                     "verified_phone_label_enabled": False,
+                     "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+                     "responsive_web_graphql_timeline_navigation_enabled": True}
+        params = {"variables": json.dumps(variables), "features": json.dumps(features)}
+        resp = self._get(url, params=params)
         data = resp.json()
-        if "id_str" not in data:
-            raise ValueError(
-                f"Authentication failed. Response: {data}. "
-                "Check your auth_token and ct0 values."
-            )
-        self._user_id  = data["id_str"]
-        self._username = data["screen_name"]
+        user = (
+            data.get("data", {})
+                .get("viewer", {})
+                .get("user_results", {})
+                .get("result", {})
+                .get("legacy", {})
+        )
+        if not user:
+            # Fallback to v1.1 endpoint
+            url2 = f"{BASE_URL}/i/api/1.1/account/verify_credentials.json"
+            resp2 = self._get(url2, params={"include_email": "false"})
+            user = resp2.json()
+            if "id_str" not in user:
+                raise ValueError(
+                    f"Authentication failed. Response: {user}. "
+                    "Check your auth_token and ct0 values."
+                )
+            self._user_id  = user["id_str"]
+            self._username = user["screen_name"]
+        else:
+            self._user_id  = user.get("id_str") or data["data"]["viewer"]["user_results"]["result"].get("rest_id")
+            self._username = user.get("screen_name", "unknown")
         log.info(f"Authenticated as @{self._username} (ID: {self._user_id})")
-        return data
+        return user
 
     @property
     def user_id(self) -> str:
