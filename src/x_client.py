@@ -94,43 +94,20 @@ class XClient:
     # ── Auth & Identity ──────────────────────────────────────────────────────
 
     def get_me(self) -> dict:
-        """Fetch the authenticated user's profile via GraphQL to validate credentials."""
-        import json
-        qid = "NimuplG1OB7Fd2btCLdBOw"
-        url = f"{API_URL}/{qid}/Viewer"
-        variables = {"withCommunitiesMemberships": True}
-        features  = {"rweb_tipjar_consumption_enabled": True,
-                     "responsive_web_graphql_exclude_directive_enabled": True,
-                     "verified_phone_label_enabled": False,
-                     "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
-                     "responsive_web_graphql_timeline_navigation_enabled": True}
-        params = {"variables": json.dumps(variables), "features": json.dumps(features)}
-        resp = self._get(url, params=params)
+        """Fetch the authenticated user's profile to validate credentials."""
+        # v1.1 REST — stable, reliable with bearer token + cookies
+        url  = f"{BASE_URL}/i/api/1.1/account/verify_credentials.json"
+        resp = self._get(url, params={"include_email": "false", "skip_status": "true"})
         data = resp.json()
-        user = (
-            data.get("data", {})
-                .get("viewer", {})
-                .get("user_results", {})
-                .get("result", {})
-                .get("legacy", {})
-        )
-        if not user:
-            # Fallback to v1.1 endpoint
-            url2 = f"{BASE_URL}/i/api/1.1/account/verify_credentials.json"
-            resp2 = self._get(url2, params={"include_email": "false"})
-            user = resp2.json()
-            if "id_str" not in user:
-                raise ValueError(
-                    f"Authentication failed. Response: {user}. "
-                    "Check your auth_token and ct0 values."
-                )
-            self._user_id  = user["id_str"]
-            self._username = user["screen_name"]
-        else:
-            self._user_id  = user.get("id_str") or data["data"]["viewer"]["user_results"]["result"].get("rest_id")
-            self._username = user.get("screen_name", "unknown")
+        if "id_str" not in data:
+            raise ValueError(
+                f"Authentication failed. Response: {data}. "
+                "Check your X_AUTH_TOKEN and X_CT0 values."
+            )
+        self._user_id  = data["id_str"]
+        self._username = data["screen_name"]
         log.info(f"Authenticated as @{self._username} (ID: {self._user_id})")
-        return user
+        return data
 
     @property
     def user_id(self) -> str:
